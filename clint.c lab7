@@ -1,0 +1,96 @@
+// Roll: 25673 Service Type: B d = 1
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+int main() {
+    int s, a[100], n;
+    char b[1024], r[100];
+    struct sockaddr_in srv, cli;
+    socklen_t l = sizeof(cli);
+
+    s = socket(AF_INET, SOCK_DGRAM, 0);
+    memset(&srv, 0, sizeof(srv));
+    srv.sin_family = AF_INET;
+    srv.sin_port = htons(30673);
+    srv.sin_addr.s_addr = INADDR_ANY;
+
+    bind(s, (struct sockaddr *)&srv, sizeof(srv));
+    printf("Server running on port 30673\n");
+
+    while (1) {
+        int k = recvfrom(s, b, 1023, 0,
+                         (struct sockaddr *)&cli, &l);
+        b[k] = '\0';
+
+        char *p = strchr(b, '#');
+        if (!p) strcpy(r, "ERROR: Unauthorized client");
+        else {
+            *p++ = '\0';
+
+            if (strcmp(b, "25673"))
+                strcpy(r, "ERROR: Unauthorized client");
+            else if (!strcmp(p, "EXIT")) {
+                strcpy(r, "Server shutting down");
+                sendto(s, r, strlen(r), 0,
+                       (struct sockaddr *)&cli, l);
+                break;
+            } else {
+                char op[10], *q;
+                int sum = 0, mx, mn;
+                sscanf(p, "%[^|]|%d|", op, &n);
+                q = strchr(p, '|');
+                q = q ? strchr(q + 1, '|') : NULL;
+
+                if (!q || n < 1 || n > 100) {
+                    strcpy(r, "ERROR: Invalid format");
+                } else {
+                    q++;
+                    int ok = 1;
+                    for (int i = 0; i < n; i++) {
+                        char *end;
+                        long v = strtol(q, &end, 10);
+                        if (q == end || v < -2147483647L-1 ||
+                            v > 2147483647L) {
+                            ok = 0;
+                            break;
+                        }
+                        a[i] = (int)v;
+                        sum += a[i];
+                        q = end;
+                        while (*q == ' ') q++;
+                    }
+
+                    if (!ok) strcpy(r, "ERROR: Invalid list");
+                    else {
+                        mx = mn = a[0];
+                        for (int i = 0; i < n; i++) {
+                            if (a[i] > mx) mx = a[i];
+                            if (a[i] < mn) mn = a[i];
+                        }
+
+                        if (!strcmp(op, "SUM"))
+                            sprintf(r, "%d", sum);
+                        else if (!strcmp(op, "MAX"))
+                            sprintf(r, "%d", mx);
+                        else if (!strcmp(op, "MIN"))
+                            sprintf(r, "%d", mn);
+                        else if (!strcmp(op, "AVG"))
+                            sprintf(r, "%.2f", (double)sum/n);
+                        else strcpy(r, "ERROR: Invalid operation");
+                    }
+                }
+            }
+        }
+
+        printf("Response: %s\n", r);
+        sendto(s, r, strlen(r), 0,
+               (struct sockaddr *)&cli, l);
+    }
+
+    close(s);
+    return 0;
+}
